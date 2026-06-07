@@ -267,6 +267,44 @@ describe("Crafatar", function() {
       });
     });
 
+    it("should return skin model JSON for a default Steve UUID", function(done) {
+      var url = "http://localhost:3000/skinmodel/00000000000000000000000000000000";
+      request.get(url, function(error, res, body) {
+        assert.ifError(error);
+        assert.strictEqual(res.statusCode, 200);
+        assert_headers(res);
+        assert.strictEqual(res.headers["content-type"], "application/json; charset=utf-8");
+        assert.strictEqual(res.headers["x-skin-slim"], "false");
+        assert.strictEqual(res.headers["x-skin-model"], "classic");
+        assert.deepStrictEqual(JSON.parse(body), {
+          uuid: "00000000000000000000000000000000",
+          slim: false,
+          model: "classic",
+          skin: false
+        });
+        done();
+      });
+    });
+
+    it("should return skin model JSON for a default Alex UUID", function(done) {
+      var url = "http://localhost:3000/skinmodel/00000000000000000000000000000001";
+      request.get(url, function(error, res, body) {
+        assert.ifError(error);
+        assert.strictEqual(res.statusCode, 200);
+        assert_headers(res);
+        assert.strictEqual(res.headers["content-type"], "application/json; charset=utf-8");
+        assert.strictEqual(res.headers["x-skin-slim"], "true");
+        assert.strictEqual(res.headers["x-skin-model"], "slim");
+        assert.deepStrictEqual(JSON.parse(body), {
+          uuid: "00000000000000000000000000000001",
+          slim: true,
+          model: "slim",
+          skin: false
+        });
+        done();
+      });
+    });
+
     it("should not fail on simultaneous requests", function(done) {
       var url = "http://localhost:3000/avatars/696a82ce41f44b51aa31b8709b8686f0";
       // 10 requests at once
@@ -307,10 +345,14 @@ describe("Crafatar", function() {
       "avatar with non-existent uuid": {
         url: "http://localhost:3000/avatars/00000000000000000000000000000000?size=16",
         crc32: [3348154329],
+        slim: "false",
+        model: "classic",
       },
       "avatar with non-existent uuid defaulting to mhf_alex": {
         url: "http://localhost:3000/avatars/00000000000000000000000000000000?size=16&default=mhf_alex",
         crc32: [73899130],
+        slim: "true",
+        model: "slim",
       },
       "avatar with non-existent uuid defaulting to uuid": {
         url: "http://localhost:3000/avatars/00000000000000000000000000000000?size=16&default=853c80ef3c3749fdaa49938b674adae6",
@@ -364,10 +406,14 @@ describe("Crafatar", function() {
       "skin with non-existent uuid": {
         url: "http://localhost:3000/skins/00000000000000000000000000000000",
         crc32: [1853029228],
+        slim: "false",
+        model: "classic",
       },
       "skin with non-existent uuid defaulting to mhf_alex": {
         url: "http://localhost:3000/skins/00000000000000000000000000000000?default=mhf_alex",
         crc32: [427506205],
+        slim: "true",
+        model: "slim",
       },
       "skin with non-existent uuid defaulting to uuid": {
         url: "http://localhost:3000/skins/00000000000000000000000000000000?size=16&default=853c80ef3c3749fdaa49938b674adae6",
@@ -386,10 +432,14 @@ describe("Crafatar", function() {
       "head render with non-existent uuid": {
         url: "http://localhost:3000/renders/head/00000000000000000000000000000000?scale=2",
         crc32: [3800926063],
+        slim: "false",
+        model: "classic",
       },
       "head render with non-existent uuid defaulting to mhf_alex": {
         url: "http://localhost:3000/renders/head/00000000000000000000000000000000?scale=2&default=mhf_alex",
         crc32: [4027858557],
+        slim: "true",
+        model: "slim",
       },
       "head render with non-existent uuid defaulting to uuid": {
         url: "http://localhost:3000/renders/head/00000000000000000000000000000000?scale=2&default=853c80ef3c3749fdaa49938b674adae6",
@@ -494,6 +544,10 @@ describe("Crafatar", function() {
             } else {
               assert.strictEqual(res.headers["content-type"], "image/png");
               assert.strictEqual(res.statusCode, 200);
+              if (location.slim) {
+                assert.strictEqual(res.headers["x-skin-slim"], location.slim);
+                assert.strictEqual(res.headers["x-skin-model"], location.model);
+              }
               assert(res.headers.etag);
               assert.strictEqual(res.headers.etag, '"' + hash + '"');
               assert_cache(location.url, res.headers.etag, function() {
@@ -547,7 +601,7 @@ describe("Crafatar", function() {
     });
 
     // testing all paths for Invalid UUID
-    var locations = ["avatars", "skins", "capes", "renders/body", "renders/head"];
+    var locations = ["avatars", "skins", "capes", "renders/body", "renders/head", "skinmodel"];
     for (var l in locations) {
       loc = locations[l];
       (function(location) {
