@@ -9,7 +9,6 @@ if (process.env.VERBOSE_TEST !== "true") {
 
 var networking = require("../lib/networking");
 var helpers = require("../lib/helpers");
-var request = require("request");
 var config = require("../config");
 var server = require("../lib/server");
 var assert = require("assert");
@@ -17,6 +16,47 @@ var skins = require("../lib/skins");
 var cache = require("../lib/cache");
 var crc = require("crc").crc32;
 var fs = require("fs");
+var http = require("http");
+
+// minimal HTTP client for the tests, the url path is sent as-is
+// +options+ can contain headers and encoding (null returns a buffer)
+// callback: error, response, body
+function http_request(method, url, options, callback) {
+  if (typeof url === "object") {
+    callback = options;
+    options = url;
+    url = options.url;
+  } else if (typeof options === "function") {
+    callback = options;
+    options = {};
+  }
+  var encoding = options.encoding === undefined ? "utf8" : options.encoding;
+  // don't use URL parsing, it would normalize paths like /../
+  var parts = url.match(/^http:\/\/([^/:]+):(\d+)(\/.*)?$/);
+  var req = http.request({
+    method: method,
+    host: parts[1],
+    port: parts[2],
+    path: parts[3] || "/",
+    headers: options.headers,
+  }, function(res) {
+    var chunks = [];
+    res.on("data", function(chunk) {
+      chunks.push(chunk);
+    });
+    res.on("end", function() {
+      var body = Buffer.concat(chunks);
+      callback(null, res, encoding ? body.toString(encoding) : body);
+    });
+  });
+  req.on("error", callback);
+  req.end();
+}
+
+var request = {
+  get: http_request.bind(null, "GET"),
+  post: http_request.bind(null, "POST"),
+};
 
 // we don't want tests to fail because of slow internet
 config.server.http_timeout *= 3;
@@ -65,10 +105,10 @@ describe("Crafatar", function() {
 
   before(function(done) {
     console.log("Flushing and waiting for redis ...");
-    cache.get_redis().flushall(function() {
+    cache.get_redis().flushAll().then(function() {
       console.log("Redis flushed!");
       done();
-    });
+    }, done);
   });
 
   describe("UUID/username", function() {
@@ -156,7 +196,7 @@ describe("Crafatar", function() {
       });
     });
     it("should time out on skin download", function(done) {
-      var original_timeout = config.http_timeout;
+      var original_timeout = config.server.http_timeout;
       config.server.http_timeout = 1;
       networking.get_from(rid(), "http://textures.minecraft.net/texture/477be35554684c28bdeee4cf11c591d3c88afb77e0b98da893fd7bc318c65184", function(body, res, error) {
         assert.notStrictEqual(["ETIMEDOUT", "ESOCKETTIMEDOUT"].indexOf(error.code), -1);
@@ -336,21 +376,21 @@ describe("Crafatar", function() {
     var server_tests = {
       "avatar with existing uuid": {
         url: "http://localhost:3000/avatars/853c80ef3c3749fdaa49938b674adae6?size=16",
-        crc32: [4264176600],
+        crc32: [3337292777],
       },
       "avatar with existing dashed uuid": {
         url: "http://localhost:3000/avatars/853c80ef-3c37-49fd-aa49938b674adae6?size=16",
-        crc32: [4264176600],
+        crc32: [3337292777],
       },
       "avatar with non-existent uuid": {
         url: "http://localhost:3000/avatars/00000000000000000000000000000000?size=16",
-        crc32: [3348154329],
+        crc32: [1243826040],
         slim: "false",
         model: "classic",
       },
       "avatar with non-existent uuid defaulting to mhf_alex": {
         url: "http://localhost:3000/avatars/00000000000000000000000000000000?size=16&default=mhf_alex",
-        crc32: [73899130],
+        crc32: [809395677],
         slim: "true",
         model: "slim",
       },
@@ -366,15 +406,15 @@ describe("Crafatar", function() {
       },
       "overlay avatar with existing uuid": {
         url: "http://localhost:3000/avatars/853c80ef3c3749fdaa49938b674adae6?size=16&overlay",
-        crc32: [575355728],
+        crc32: [1710265722],
       },
       "overlay avatar with non-existent uuid": {
         url: "http://localhost:3000/avatars/00000000000000000000000000000000?size=16&overlay",
-        crc32: [3348154329],
+        crc32: [1243826040],
       },
       "overlay avatar with non-existent uuid defaulting to mhf_alex": {
         url: "http://localhost:3000/avatars/00000000000000000000000000000000?size=16&overlay&default=mhf_alex",
-        crc32: [73899130],
+        crc32: [809395677],
       },
       "overlay avatar with non-existent uuid defaulting to uuid": {
         url: "http://localhost:3000/avatars/00000000000000000000000000000000?size=16&default=853c80ef3c3749fdaa49938b674adae6",
@@ -388,7 +428,7 @@ describe("Crafatar", function() {
       },
       "cape with existing uuid": {
         url: "http://localhost:3000/capes/853c80ef3c3749fdaa49938b674adae6",
-        crc32: [985789174, 2099310578],
+        crc32: [142742126],
       },
       "cape with non-existent uuid": {
         url: "http://localhost:3000/capes/00000000000000000000000000000000",
@@ -401,17 +441,17 @@ describe("Crafatar", function() {
       },
       "skin with existing uuid": {
         url: "http://localhost:3000/skins/853c80ef3c3749fdaa49938b674adae6",
-        crc32: [1759176487],
+        crc32: [26500336],
       },
       "skin with non-existent uuid": {
         url: "http://localhost:3000/skins/00000000000000000000000000000000",
-        crc32: [1853029228],
+        crc32: [981937087],
         slim: "false",
         model: "classic",
       },
       "skin with non-existent uuid defaulting to mhf_alex": {
         url: "http://localhost:3000/skins/00000000000000000000000000000000?default=mhf_alex",
-        crc32: [427506205],
+        crc32: [2298915739],
         slim: "true",
         model: "slim",
       },
@@ -427,17 +467,17 @@ describe("Crafatar", function() {
       },
       "head render with existing uuid": {
         url: "http://localhost:3000/renders/head/853c80ef3c3749fdaa49938b674adae6?scale=2",
-        crc32: [1168786201],
+        crc32: [691409980],
       },
       "head render with non-existent uuid": {
         url: "http://localhost:3000/renders/head/00000000000000000000000000000000?scale=2",
-        crc32: [3800926063],
+        crc32: [4035792736],
         slim: "false",
         model: "classic",
       },
       "head render with non-existent uuid defaulting to mhf_alex": {
         url: "http://localhost:3000/renders/head/00000000000000000000000000000000?scale=2&default=mhf_alex",
-        crc32: [4027858557],
+        crc32: [1539248714],
         slim: "true",
         model: "slim",
       },
@@ -453,15 +493,15 @@ describe("Crafatar", function() {
       },
       "overlay head render with existing uuid": {
         url: "http://localhost:3000/renders/head/853c80ef3c3749fdaa49938b674adae6?scale=2&overlay",
-        crc32: [2880579826],
+        crc32: [2061468715],
       },
       "overlay head render with non-existent uuid": {
         url: "http://localhost:3000/renders/head/00000000000000000000000000000000?scale=2&overlay",
-        crc32: [3800926063],
+        crc32: [4035792736],
       },
       "overlay head render with non-existent uuid defaulting to mhf_alex": {
         url: "http://localhost:3000/renders/head/00000000000000000000000000000000?scale=2&overlay&default=mhf_alex",
-        crc32: [4027858557],
+        crc32: [1539248714],
       },
       "overlay head with non-existent uuid defaulting to uuid": {
         url: "http://localhost:3000/renders/head/00000000000000000000000000000000?scale=2&overlay&default=853c80ef3c3749fdaa49938b674adae6",
@@ -475,15 +515,15 @@ describe("Crafatar", function() {
       },
       "body render with existing uuid": {
         url: "http://localhost:3000/renders/body/853c80ef3c3749fdaa49938b674adae6?scale=2",
-        crc32: [1144887125],
+        crc32: [342704592],
       },
       "body render with non-existent uuid": {
         url: "http://localhost:3000/renders/body/00000000000000000000000000000000?scale=2",
-        crc32: [996962526],
+        crc32: [1851870945],
       },
       "body render with non-existent uuid defaulting to mhf_alex": {
         url: "http://localhost:3000/renders/body/00000000000000000000000000000000?scale=2&default=mhf_alex",
-        crc32: [4280894468],
+        crc32: [4271105747],
       },
       "body render with non-existent uuid defaulting to uuid": {
         url: "http://localhost:3000/renders/body/00000000000000000000000000000000?scale=2&default=853c80ef3c3749fdaa49938b674adae6",
@@ -497,15 +537,15 @@ describe("Crafatar", function() {
       },
       "overlay body render with existing uuid": {
         url: "http://localhost:3000/renders/body/853c80ef3c3749fdaa49938b674adae6?scale=2&overlay",
-        crc32: [1107696668],
+        crc32: [1588306981],
       },
       "overlay body render with non-existent uuid": {
         url: "http://localhost:3000/renders/body/00000000000000000000000000000000?scale=2&overlay",
-        crc32: [996962526],
+        crc32: [1851870945],
       },
       "overlay body render with non-existent uuid defaulting to mhf_alex": {
         url: "http://localhost:3000/renders/body/00000000000000000000000000000000?scale=2&overlay&default=mhf_alex",
-        crc32: [4280894468],
+        crc32: [4271105747],
       },
       "overlay body render with non-existent uuid defaulting to url": {
         url: "http://localhost:3000/renders/body/00000000000000000000000000000000?scale=2&overlay&default=http%3A%2F%2Fexample.com%2FCaseSensitive",
@@ -673,7 +713,7 @@ describe("Crafatar", function() {
     });
     it("should already exist", function(done) {
       before(function() {
-        cache.get_redis().flushall();
+        cache.get_redis().flushAll();
       });
       helpers.get_cape(rid(), "61699b2ed3274a019f1e0ea8c3f06bc6", function(err, hash, status, img) {
         assert.strictEqual(err, null);
@@ -698,7 +738,7 @@ describe("Crafatar", function() {
     });
     it("should already exist", function(done) {
       before(function() {
-        cache.get_redis().flushall();
+        cache.get_redis().flushAll();
       });
       helpers.get_cape(rid(), "2d5aa9cdaeb049189930461fc9b91cc5", function(err, hash, status, img) {
         assert.strictEqual(err, null);
@@ -711,7 +751,7 @@ describe("Crafatar", function() {
 
   describe("Networking: Avatar", function() {
     before(function() {
-      cache.get_redis().flushall();
+      cache.get_redis().flushAll();
     });
     it("should be downloaded", function(done) {
       helpers.get_avatar(rid(), uuid, false, 160, function(err, status, image) {
@@ -765,7 +805,7 @@ describe("Crafatar", function() {
 
   describe("Errors", function() {
     before(function() {
-      cache.get_redis().flushall();
+      cache.get_redis().flushAll();
     });
 
     // Mojang has changed its rate limiting, so we no longer expect to hit the rate limit
@@ -794,7 +834,7 @@ describe("Crafatar", function() {
 
   after(function(done) {
     server.close(function() {
-      cache.get_redis().quit();
+      cache.get_redis().close();
       done();
     });
   });
